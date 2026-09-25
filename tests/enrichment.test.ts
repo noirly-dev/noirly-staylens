@@ -1,8 +1,6 @@
-import type Anthropic from "@anthropic-ai/sdk";
 import { describe, expect, it, vi } from "vitest";
 import { getFilterConfig } from "@/lib/config";
 import { HeuristicEnricher } from "@/lib/enrichment/heuristic";
-import { LlmEnricher, buildEnrichmentPrompt } from "@/lib/enrichment/llm";
 import { EnrichmentService } from "@/lib/enrichment/service";
 import { MemoryEnrichmentStore, type Enricher } from "@/lib/enrichment/types";
 import { buildTagVocabulary, vocabularyHash } from "@/lib/enrichment/vocabulary";
@@ -43,66 +41,45 @@ describe("HeuristicEnricher", () => {
   });
 });
 
-describe("LlmEnricher", () => {
-  const fakeClient = (parsed: unknown, stop_reason = "end_turn") =>
-    ({ messages: { parse: vi.fn().mockResolvedValue({ parsed_output: parsed, stop_reason }) } }) as unknown as Anthropic;
-
-  it("builds a prompt with vocabulary and stays", () => {
-    const prompt = buildEnrichmentPrompt([{ property: makeProperty({ placeId: "x1", amenities: ["Spa"] }), details: { placeId: "x1", description: "d".repeat(700), reviews: ["nice"] } }], vocab);
-    expect(prompt).toContain('<stay placeId="x1">');
-    expect(prompt).toContain("- quiet:");
-    expect(prompt).toContain("amenities: Spa");
-    expect(prompt).toContain("…");
-  });
-
-  it("returns tags per place and fills skipped places with []", async () => {
-    const client = fakeClient({ results: [{ placeId: "a", tags: ["quiet", "quiet"] }, { placeId: "zzz", tags: ["view"] }] });
-    const e = new LlmEnricher(client, "claude-sonnet-4-6");
-    const out = await e.enrich(
-      [
-        { property: makeProperty({ placeId: "a" }), details: null },
-        { property: makeProperty({ placeId: "b" }), details: null },
-      ],
-      vocab,
-    );
-    expect(out.get("a")).toEqual(["quiet"]);
-    expect(out.get("b")).toEqual([]);
-    expect(out.has("zzz")).toBe(false);
-    expect(e.name).toBe("llm:claude-sonnet-4-6");
-    const args = (client.messages.parse as ReturnType<typeof vi.fn>).mock.calls[0]![0];
-    expect(args.model).toBe("claude-sonnet-4-6");
-    expect(args.output_config.format).toBeDefined();
-  });
-
-  it("throws on refusal and short-circuits on empty input", async () => {
-    await expect(new LlmEnricher(fakeClient(null, "refusal"), "m").enrich([{ property: makeProperty(), details: null }], vocab)).rejects.toThrow(/refusal/);
-    expect((await new LlmEnricher(fakeClient(null), "m").enrich([], vocab)).size).toBe(0);
-  });
-});
-
 describe("EnrichmentService", () => {
-  it("caches by vocab hash and falls back when the primary enricher fails", async () => {
+  it("caches by vocab hash and only keeps vocabulary tags", async () => {
     const places = new MockPlacesProvider();
     const store = new MemoryEnrichmentStore();
-    const failing: Enricher = { name: "llm:x", enrich: vi.fn().mockRejectedValue(new Error("boom")) };
-    const svc = new EnrichmentService(config, store, failing, { name: "heuristic", enrich: async () => new Map([["p1", ["quiet", "not_a_tag"]]]) });
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const enricher: Enricher = { name: "keywords", enrich: vi.fn(async () => new Map([["p1", ["quiet", "not_a_tag"]]])) };
+    const svc = new EnrichmentService(config, store, enricher);
     const first = await svc.enrich([makeProperty({ placeId: "p1", tags: ["existing"] })], places, { compute: true });
     expect(first.properties[0]!.tags).toEqual(["existing", "quiet"]);
-    expect(first.stats).toMatchObject({ computed: 1, fallback: "heuristic" });
+    expect(first.stats).toMatchObject({ computed: 1, enricher: "keywords" });
+    expect((await store.getMany(["p1"])).get("p1")).toEqual({ tags: ["quiet"], vocabHash: svc.vocabHash, enricher: "keywords" });
     const second = await svc.enrich([makeProperty({ placeId: "p1" })], places, { compute: true });
     expect(second.stats).toMatchObject({ cached: 1, computed: 0 });
-    expect(failing.enrich).toHaveBeenCalledTimes(1);
+    expect(enricher.enrich).toHaveBeenCalledTimes(1);
+  });
+
+  it("recomputes when the stored vocabulary hash is stale", async () => {
+    const store = new MemoryEnrichmentStore();
+    await store.putMany(new Map([["p1", { tags: ["quiet"], vocabHash: "old", enricher: "keywords" }]]));
+    const svc = new EnrichmentService(config, store, new HeuristicEnricher());
+    const r = await svc.enrich([makeProperty({ placeId: "p1" })], new MockPlacesProvider(), { compute: true });
+    expect(r.stats).toMatchObject({ cached: 0, computed: 1 });
+  });
+
+  it("treats a store read failure as a cache miss", async () => {
+    const store = new MemoryEnrichmentStore();
+    vi.spyOn(store, "getMany").mockRejectedValue(new Error("db down"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const svc = new EnrichmentService(config, store, new HeuristicEnricher());
+    const r = await svc.enrich([makeProperty({ placeId: "p1" })], new MockPlacesProvider(), { compute: true });
+    expect(r.stats).toMatchObject({ cached: 0, computed: 1 });
     warn.mockRestore();
   });
 
-  it("does not compute when compute=false, and rethrows without a fallback", async () => {
-    const places = new MockPlacesProvider();
-    const failing: Enricher = { name: "x", enrich: vi.fn().mockRejectedValue(new Error("boom")) };
-    const svc = new EnrichmentService(config, new MemoryEnrichmentStore(), failing);
-    const r = await svc.enrich([makeProperty()], places, { compute: false });
+  it("does not compute when compute=false", async () => {
+    const enricher: Enricher = { name: "x", enrich: vi.fn() };
+    const svc = new EnrichmentService(config, new MemoryEnrichmentStore(), enricher);
+    const r = await svc.enrich([makeProperty()], new MockPlacesProvider(), { compute: false });
     expect(r.stats.computed).toBe(0);
-    await expect(svc.enrich([makeProperty()], places, { compute: true })).rejects.toThrow("boom");
+    expect(enricher.enrich).not.toHaveBeenCalled();
   });
 
   it("is a no-op with an empty vocabulary", async () => {

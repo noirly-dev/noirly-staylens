@@ -26,7 +26,6 @@ interface ParseResponse {
   filters: FilterValues;
   originText: string | null;
   origin: GeoPoint | null;
-  parser: "llm" | "heuristic";
 }
 
 const STAGE_LABELS: Record<string, string> = {

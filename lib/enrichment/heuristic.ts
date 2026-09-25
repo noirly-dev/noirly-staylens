@@ -5,7 +5,7 @@ import type { TagDef } from "./vocabulary";
 const NEGATIONS = /\b(no|not|never|without|isn't|wasn't|lacks?|patchy|poor)\b/i;
 
 /**
- * Offline enricher: tags a place when its description, reviews or amenities mention a tag or
+ * Keyword enricher (no AI model): tags a place when its description, reviews or amenities mention a tag or
  * one of its synonyms. Sentences with a negation ("Wi-Fi was patchy, not great for working")
  * are ignored to avoid obvious false positives.
  */

@@ -1,12 +1,10 @@
 import { createCache, type KvCache } from "@/lib/cache";
 import { getFilterConfig } from "@/lib/config";
-import { getDb, PgEnrichmentStore, PgEntityMatchSink } from "@/lib/db";
+import { createMongoStores } from "@/lib/db/mongo";
 import { HeuristicEnricher } from "@/lib/enrichment/heuristic";
-import { LlmEnricher } from "@/lib/enrichment/llm";
 import { EnrichmentService } from "@/lib/enrichment/service";
 import { MemoryEnrichmentStore, type EnrichmentStore } from "@/lib/enrichment/types";
 import { getServerEnv } from "@/lib/env";
-import { getAnthropic } from "@/lib/llm";
 import type { SearchDeps } from "@/lib/search/pipeline";
 import { CachedPlacesProvider, CachedRatesProvider } from "./cached";
 import { GooglePlacesProvider } from "./google/places";
@@ -25,14 +23,14 @@ let services: AppServices | undefined;
 
 /**
  * Builds providers from env. With no keys at all everything runs offline:
- * mock places/routes/rates, heuristic enrichment, in-memory caches.
+ * mock places/routes/rates, keyword enrichment, in-memory stores and caches.
  */
 export function getServices(): AppServices {
   if (services) return services;
   const env = getServerEnv();
   const config = getFilterConfig();
   const cache = createCache(env);
-  const db = env.DATABASE_URL ? getDb(env.DATABASE_URL) : undefined;
+  const mongo = env.MONGODB_URI ? createMongoStores(env.MONGODB_URI, env.MONGODB_DB) : undefined;
 
   let rawPlaces: PlacesProvider;
   let routes: RoutesProvider;
@@ -48,18 +46,15 @@ export function getServices(): AppServices {
   if (env.RATES_PROVIDER === "serpapi") {
     rawRates = new SerpApiRatesProvider(env.SERPAPI_KEY!, {
       currency: config.currency,
-      matches: db ? new PgEntityMatchSink(db) : undefined,
+      matches: mongo?.entityMatches,
     });
   } else {
     const mockPlaces = rawPlaces instanceof MockPlacesProvider ? rawPlaces : undefined;
     rawRates = new MockRatesProvider(config.currency, (id) => mockPlaces?.basePriceFor(id));
   }
 
-  const store: EnrichmentStore = db ? new PgEnrichmentStore(db) : new MemoryEnrichmentStore();
-  const heuristic = new HeuristicEnricher();
-  const enrichment = env.ANTHROPIC_API_KEY
-    ? new EnrichmentService(config, store, new LlmEnricher(getAnthropic(env.ANTHROPIC_API_KEY), env.ANTHROPIC_MODEL), heuristic)
-    : new EnrichmentService(config, store, heuristic);
+  const store: EnrichmentStore = mongo?.enrichment ?? new MemoryEnrichmentStore();
+  const enrichment = new EnrichmentService(config, store, new HeuristicEnricher());
 
   services = {
     config,

@@ -10,7 +10,9 @@ cp .env.example .env.local   # all keys optional
 pnpm dev                      # http://localhost:3000
 ```
 
-If no keys are set, **everything runs offline**: mock places/routes/rates, keyword-heuristic enrichment and query parsing, in-memory caches, and a schematic fallback map.
+No AI model is used anywhere: vibe tags come from keyword/synonym matching over descriptions and reviews, and the natural-language box is a rule-based parser — both driven by `config/filters.json`.
+
+If no keys are set, **everything runs offline**: mock places/routes/rates, in-memory stores and caches, and a schematic fallback map.
 
 ```bash
 pnpm typecheck && pnpm lint && pnpm test   # CI gate
@@ -25,11 +27,10 @@ pnpm test:coverage                         # scoring engine coverage (threshold 
 | `GOOGLE_MAPS_API_KEY` | Server-side Places API (New) + Routes API instead of mocks |
 | `NEXT_PUBLIC_GOOGLE_MAPS_KEY` | Google map in the browser (`NEXT_PUBLIC_GOOGLE_MAP_ID` optional, for Advanced Markers) |
 | `SERPAPI_KEY` | SerpApi Google Hotels rates adapter |
-| `ANTHROPIC_API_KEY` | LLM enrichment + NL query parsing (`ANTHROPIC_MODEL`, default `claude-sonnet-4-6`) |
-| `DATABASE_URL` | Postgres + PostGIS for persistent enrichment tags and entity matches |
+| `MONGODB_URI` / `MONGODB_DB` | MongoDB for persistent enrichment tags and entity matches (db defaults to `staylens`) |
 | `UPSTASH_REDIS_URL` / `UPSTASH_REDIS_TOKEN` | Redis cache for rates (30 min) and places responses |
 
-Database: `pnpm db:migrate` applies `db/migrations` (enables the `postgis` extension).
+Database: no migrations needed. Collections are `enrichments` (`_id` = place ID) and `entity_matches` (GeoJSON `location` with a `2dsphere` index, created automatically on first connect).
 
 ## Architecture
 
@@ -43,9 +44,10 @@ lib/providers/               adapters -> normalized Property (lib/types.ts)
   mock/                          deterministic offline world, routes, rates
   cached.ts                      Redis/memory caching wrappers
 lib/matching/                name similarity + <300 m distance, confidence score
-lib/enrichment/              tag vocabulary (from config), LLM + heuristic enrichers, tag store
+lib/enrichment/              tag vocabulary (from config), keyword enricher, tag store
+lib/db/mongo.ts              MongoDB stores for tags + entity matches
 lib/search/pipeline.ts       cost-ordered search pipeline
-lib/nlp/                     NL query -> filter values (LLM structured output or heuristic)
+lib/nlp/                     NL query -> filter values (rule-based, config-driven)
 app/api/                     /search, /parse-query, /config/filters, /geocode, /photo
 components/                  config-generated filter panel, results, maps, detail drawer
 ```
@@ -64,10 +66,10 @@ components/                  config-generated filter panel, results, maps, detai
 Each filter has `id`, `label`, `type` (`range | bool | enum | llm_tag`), `source` (`rates | places | routes | enrichment`), either `hard: true` or a `weight` (0–1), plus `unit`, `default`, and type-specific fields:
 
 - `range`: `field` (`nightlyRate | driveTimeMin | rating | reviewCount`), `min`, `max`, `step`, optional `tolerance` for soft partial credit.
-- `bool` / `llm_tag`: `key` (defaults to id), `synonyms` (provider amenity strings / review phrases), `matchOn` (`amenities | tags | types | name`).
+- `bool` / `llm_tag`: `llm_tag` filters are derived tags matched against descriptions/reviews (the name is kept from the original spec; no model is involved). `key` (defaults to id), `synonyms` (provider amenity strings / review phrases), `matchOn` (`amenities | tags | types | name`).
 - `enum`: `options[]` with their own synonyms.
 
-**Adding a filter is a config change only.** For example, this makes a "Gym" toggle appear in the UI, affect scoring, be recognised by the query parser, and (if `source: "enrichment"`) join the LLM tag vocabulary:
+**Adding a filter is a config change only.** For example, this makes a "Gym" toggle appear in the UI, affect scoring, be recognised by the query parser, and (if `source: "enrichment"`) join the derived-tag vocabulary:
 
 ```json
 { "id": "gym", "label": "Gym", "group": "Amenities", "type": "bool", "source": "places",

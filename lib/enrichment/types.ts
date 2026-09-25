@@ -15,7 +15,8 @@ export interface Enricher {
 export interface StoredEnrichment {
   tags: string[];
   vocabHash: string;
-  model: string;
+  /** Which enricher produced the tags. */
+  enricher: string;
 }
 
 /** Persistent store for derived tags, keyed by placeId. */

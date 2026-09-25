@@ -9,7 +9,6 @@ export interface EnrichmentStats {
   cached: number;
   computed: number;
   enricher: string;
-  fallback?: string;
 }
 
 export class EnrichmentService {
@@ -19,15 +18,14 @@ export class EnrichmentService {
   constructor(
     config: FilterConfig,
     private readonly store: EnrichmentStore,
-    private readonly primary: Enricher,
-    private readonly fallback?: Enricher,
+    private readonly enricher: Enricher,
   ) {
     this.vocabulary = buildTagVocabulary(config);
     this.vocabHash = vocabularyHash(this.vocabulary);
   }
 
   get enricherName() {
-    return this.primary.name;
+    return this.enricher.name;
   }
 
   /**
@@ -39,10 +37,14 @@ export class EnrichmentService {
     places: PlacesProvider,
     { compute }: { compute: boolean },
   ): Promise<{ properties: Property[]; stats: EnrichmentStats }> {
-    const stats: EnrichmentStats = { cached: 0, computed: 0, enricher: this.primary.name };
+    const stats: EnrichmentStats = { cached: 0, computed: 0, enricher: this.enricher.name };
     if (!this.vocabulary.length) return { properties: [...properties], stats };
 
-    const stored = await this.store.getMany(properties.map((p) => p.placeId));
+    // A store outage degrades to "nothing cached" rather than failing the search.
+    const stored = await this.store.getMany(properties.map((p) => p.placeId)).catch((err) => {
+      console.warn("[enrichment] failed to read cached tags", err);
+      return new Map<string, StoredEnrichment>();
+    });
     const tagsById = new Map<string, string[]>();
     const missing: Property[] = [];
     for (const p of properties) {
@@ -60,23 +62,13 @@ export class EnrichmentService {
         property,
         details: await places.getDetails(property.placeId).catch(() => null),
       }));
-      let computed: Map<string, string[]>;
-      let model = this.primary.name;
-      try {
-        computed = await this.primary.enrich(inputs, this.vocabulary);
-      } catch (err) {
-        if (!this.fallback) throw err;
-        console.warn(`[enrichment] ${this.primary.name} failed, using ${this.fallback.name}`, err);
-        computed = await this.fallback.enrich(inputs, this.vocabulary);
-        model = this.fallback.name;
-        stats.fallback = this.fallback.name;
-      }
+      const computed = await this.enricher.enrich(inputs, this.vocabulary);
       const toStore = new Map<string, StoredEnrichment>();
       const allowed = new Set(this.vocabulary.map((v) => v.tag));
       for (const [id, tags] of computed) {
         const clean = tags.filter((t) => allowed.has(t));
         tagsById.set(id, clean);
-        toStore.set(id, { tags: clean, vocabHash: this.vocabHash, model });
+        toStore.set(id, { tags: clean, vocabHash: this.vocabHash, enricher: this.enricher.name });
       }
       stats.computed = toStore.size;
       await this.store.putMany(toStore).catch((err) => console.warn("[enrichment] failed to persist tags", err));

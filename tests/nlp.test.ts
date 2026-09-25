@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getFilterConfig } from "@/lib/config";
 import { parseQueryHeuristic, sanitizeParsedFilters } from "@/lib/nlp";
-import { buildParseSchema, compactParsed, describeFilters } from "@/lib/nlp/llm";
 
 const config = getFilterConfig();
 
@@ -49,21 +48,5 @@ describe("parse output handling", () => {
       quiet: true,
     });
     expect(out).toEqual({ drive_time: { min: null, max: 480 }, quiet: true });
-  });
-
-  it("compacts nulls and false booleans", () => {
-    expect(compactParsed({ a: null, b: false, c: true, d: { min: null, max: null }, e: { min: 1, max: null }, f: "x" })).toEqual({
-      c: true,
-      e: { min: 1, max: null },
-      f: "x",
-    });
-  });
-
-  it("builds an LLM output schema and description covering every filter", () => {
-    const schema = buildParseSchema(config);
-    const sample = Object.fromEntries(config.filters.map((f) => [f.id, null]));
-    expect(schema.safeParse({ origin: null, filters: sample }).success).toBe(true);
-    const text = describeFilters(config);
-    for (const f of config.filters) expect(text).toContain(f.id);
   });
 });

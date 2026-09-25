@@ -7,9 +7,8 @@ export const serverEnvSchema = z
     RATES_PROVIDER: z.enum(["mock", "serpapi"]).default("mock"),
     GOOGLE_MAPS_API_KEY: optional,
     SERPAPI_KEY: optional,
-    ANTHROPIC_API_KEY: optional,
-    ANTHROPIC_MODEL: z.preprocess((v) => (v === "" ? undefined : v), z.string().default("claude-sonnet-4-6")),
-    DATABASE_URL: optional,
+    MONGODB_URI: optional,
+    MONGODB_DB: z.preprocess((v) => (v === "" ? undefined : v), z.string().default("staylens")),
     UPSTASH_REDIS_URL: optional,
     UPSTASH_REDIS_TOKEN: optional,
   })

@@ -24,7 +24,7 @@ const rangeByUnit = (config: FilterConfig, unit: string): RangeFilterDef | undef
   config.filters.find((f): f is RangeFilterDef => f.type === "range" && f.unit === unit);
 
 /**
- * Offline parser. Everything it can recognise is derived from config: duration phrases map to
+ * Rule-based parser (no AI model). Everything it can recognise is derived from config: duration phrases map to
  * the range filter with unit "min", money to the one whose unit is the config currency, star
  * ratings to unit "★", and term filters/enum options by label, id and synonyms.
  */
