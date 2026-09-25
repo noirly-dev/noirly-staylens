@@ -1,0 +1,208 @@
+{
+  "version": 1,
+  "currency": "INR",
+  "search": {
+    "placesQuery": "resorts villas homestays",
+    "defaultRadiusKm": 100,
+    "maxRadiusKm": 300,
+    "radiusSpeedKmh": 70,
+    "candidateLimit": 60,
+    "maxRateFetches": 25
+  },
+  "filters": [
+    {
+      "id": "price_per_night",
+      "label": "Price per night",
+      "description": "Lowest nightly rate for the selected dates and guests.",
+      "group": "Budget & distance",
+      "type": "range",
+      "source": "rates",
+      "field": "nightlyRate",
+      "hard": true,
+      "unit": "INR",
+      "min": 0,
+      "max": 50000,
+      "step": 500,
+      "default": { "min": null, "max": null }
+    },
+    {
+      "id": "drive_time",
+      "label": "Drive time",
+      "description": "Driving time from your starting point.",
+      "group": "Budget & distance",
+      "type": "range",
+      "source": "routes",
+      "field": "driveTimeMin",
+      "hard": true,
+      "unit": "min",
+      "min": 0,
+      "max": 480,
+      "step": 15,
+      "default": { "min": null, "max": 240 }
+    },
+    {
+      "id": "rating",
+      "label": "Guest rating",
+      "group": "Quality",
+      "type": "range",
+      "source": "places",
+      "field": "rating",
+      "weight": 0.6,
+      "unit": "★",
+      "min": 0,
+      "max": 5,
+      "step": 0.1,
+      "tolerance": 0.8,
+      "default": { "min": 4, "max": null }
+    },
+    {
+      "id": "review_count",
+      "label": "Number of reviews",
+      "group": "Quality",
+      "type": "range",
+      "source": "places",
+      "field": "reviewCount",
+      "weight": 0.2,
+      "unit": "reviews",
+      "min": 0,
+      "max": 2000,
+      "step": 25,
+      "default": { "min": null, "max": null }
+    },
+    {
+      "id": "stay_type",
+      "label": "Stay type",
+      "group": "Stay",
+      "type": "enum",
+      "source": "places",
+      "weight": 0.5,
+      "matchOn": ["types", "name", "tags"],
+      "options": [
+        { "value": "resort", "label": "Resort", "synonyms": ["resort_hotel"] },
+        { "value": "villa", "label": "Villa", "synonyms": ["villas", "bungalow"] },
+        { "value": "homestay", "label": "Homestay", "synonyms": ["guest_house", "bed_and_breakfast", "home stay"] },
+        { "value": "farmstay", "label": "Farmstay", "synonyms": ["farm stay", "plantation", "estate"] },
+        { "value": "hotel", "label": "Hotel", "synonyms": ["boutique hotel"] },
+        { "value": "camp", "label": "Camp", "synonyms": ["campground", "tent", "glamping"] }
+      ],
+      "default": null
+    },
+    {
+      "id": "pool",
+      "label": "Swimming pool",
+      "group": "Amenities",
+      "type": "bool",
+      "source": "places",
+      "weight": 0.6,
+      "synonyms": ["swimming_pool", "outdoor_pool", "indoor_pool", "pools"],
+      "default": false
+    },
+    {
+      "id": "private_pool",
+      "label": "Private pool",
+      "description": "The unit has its own pool or plunge pool, not shared with other guests.",
+      "group": "Amenities",
+      "type": "llm_tag",
+      "source": "enrichment",
+      "weight": 0.8,
+      "synonyms": ["plunge pool", "own pool", "pool villa"],
+      "default": false
+    },
+    {
+      "id": "pet_friendly",
+      "label": "Pet friendly",
+      "group": "Amenities",
+      "type": "bool",
+      "source": "places",
+      "weight": 0.6,
+      "synonyms": ["pets", "pets allowed", "allows dogs", "dog friendly"],
+      "default": false
+    },
+    {
+      "id": "wifi",
+      "label": "Wi-Fi",
+      "group": "Amenities",
+      "type": "bool",
+      "source": "places",
+      "weight": 0.3,
+      "synonyms": ["wi fi", "free wi fi", "internet"],
+      "default": false
+    },
+    {
+      "id": "breakfast",
+      "label": "Breakfast included",
+      "group": "Amenities",
+      "type": "bool",
+      "source": "places",
+      "weight": 0.3,
+      "synonyms": ["free breakfast", "breakfast included"],
+      "default": false
+    },
+    {
+      "id": "spa",
+      "label": "Spa",
+      "group": "Amenities",
+      "type": "bool",
+      "source": "places",
+      "weight": 0.4,
+      "synonyms": ["massage", "ayurveda"],
+      "default": false
+    },
+    {
+      "id": "quiet",
+      "label": "Quiet & secluded",
+      "description": "Guests describe it as peaceful, calm or secluded; little traffic or party noise.",
+      "group": "Vibe",
+      "type": "llm_tag",
+      "source": "enrichment",
+      "weight": 0.7,
+      "synonyms": ["peaceful", "secluded", "serene", "tranquil", "calm"],
+      "default": false
+    },
+    {
+      "id": "family_friendly",
+      "label": "Family friendly",
+      "description": "Suitable for children: play areas, family rooms, kid activities.",
+      "group": "Vibe",
+      "type": "llm_tag",
+      "source": "enrichment",
+      "weight": 0.5,
+      "matchOn": ["tags", "amenities"],
+      "synonyms": ["kid friendly", "kids", "good for children", "families"],
+      "default": false
+    },
+    {
+      "id": "view",
+      "label": "Great view",
+      "description": "Notable views: valley, mountain, lake, sea or forest.",
+      "group": "Vibe",
+      "type": "llm_tag",
+      "source": "enrichment",
+      "weight": 0.5,
+      "synonyms": ["views", "scenic", "overlook", "overlooks", "valley view", "lake view", "sea view"],
+      "default": false
+    },
+    {
+      "id": "nature_retreat",
+      "label": "Nature retreat",
+      "description": "Set in nature: forest, plantation, jungle, riverside or hills.",
+      "group": "Vibe",
+      "type": "llm_tag",
+      "source": "enrichment",
+      "weight": 0.4,
+      "synonyms": ["forest", "jungle", "plantation", "riverside", "wildlife"],
+      "default": false
+    },
+    {
+      "id": "workation_ready",
+      "label": "Workation ready",
+      "description": "Reliable fast internet and a comfortable place to work (desk, power backup).",
+      "group": "Vibe",
+      "type": "llm_tag",
+      "source": "enrichment",
+      "weight": 0.5,
+      "synonyms": ["workation", "work desk", "high speed internet", "power backup", "remote work"],
+      "default": false
+    }
+  ]
+}
